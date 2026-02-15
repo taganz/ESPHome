@@ -1,0 +1,84 @@
+# el nom que veu el home assistant
+# tambe es fa servir pel hostname en xarxa (detector-presencia.local) - lua??
+esphome:
+  name: detector-presencia
+
+# Plataforma hardware i framework de programació
+esp32:
+  board: esp32-c6-devkitm-1
+  framework:
+    type: esp-idf
+
+# Enable logging
+# logger:           # per debuggar 
+logger: 
+  level: ERROR       # per estalviar bateria  (es podria posar DEBUG per debuggar)
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_key
+  reboot_timeout: 0s  # No reiniciar si la wifi falla i perd la connexió amb el home assistant per estalviar bateria 
+# Permite actualizar firmware sin cable USB.No afecta consumo mientras el dispositivo duerme.  ???
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: high   # redueix consum wifi
+  fast_connect: true  # connecta mes rapid, es util amb ip fixa
+  manual_ip:
+    static_ip: 192.168.1.11   
+    gateway: 192.168.1.1     # IP del router
+    subnet: 255.255.255.0
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  #ap:
+  #  ssid: "Menjador1 Fallback Hotspot"
+  #  password: "4XwK48e1bpMl"
+  output_power: 8.5dB   # Reduce potencia de transmissio Wifi per estalviar bateria - si el router esta a prop
+
+#captive_portal:   
+#web_server:
+#  port: 80
+
+binary_sensor:
+  - platform: gpio   # defineix un sensor digital connectat a un pin GPIO
+    pin:  # el configura
+      number: 4
+      mode:
+        input: true
+        pulldown: true
+      allow_other_uses: true
+    name: "Movimient ESP32C6"
+    device_class: motion
+    id: pir_sensor
+    filters:
+      - delayed_off: 5s   # mante estat ON durant 5 segons. evita parpadeos 
+    # accio al detectar moviment 
+    on_press:
+        # --> espera 2seg per assegurar que HA ha rebut l'event i entra en deep sleep
+      - delay: 2s
+      - deep_sleep.enter: deep_sleep_1
+
+
+sensor:
+  - platform: adc
+    pin: GPIO5
+    name: "Bateria"
+    attenuation: 12db   # per mesurar fins a TBD
+    update_interval: 10s  # quan el ESP esta despert mesura cada 10 segons (pero si estem desperts 8s nomes mesurarem un cop)
+#    update_interval: never  # Solo mide una vez per estalviar bateria (TBC)
+# per estalviar bateria, només actualitza quan hi ha moviment (TBC)
+    filters:
+      - multiply: 1.5      # 1M / 2M = 1.5 pero caldria calibrar amb el valor real de la bateria (i fer servir 100k i 200k per tenir menys error)
+
+deep_sleep:
+  id: deep_sleep_1
+  run_duration: 8s    # el ESP estarà despert durant 8 segons després de detectar moviment 
+  # si el gpio4 passa a HIGH es desperta el xip
+  wakeup_pin:
+    number: 4
+    mode: INPUT_PULLDOWN
+    allow_other_uses: true
